@@ -11,6 +11,7 @@ app.id_count = 1
 def ping() :
     return "pong"
 
+#atomic 연산이 되어야함
 @app.route("/sign-up", methods=['POST'])
 def sign_up() :
     new_user = request.json
