@@ -11,6 +11,7 @@ FLASK_ENV=development FKAS_APP=app.py flask run
 #### request to server (app.py)
 ```bash
 http -v POST localhost:5000/sign-up name=huhji email=huhji.elha@gmail.com password=1234
+http -v POST localhost:5000/tweet id:=1 tweet="lalala"
 ```
 
 ### HTTP Status Code remind
