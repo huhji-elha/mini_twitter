@@ -1,6 +1,8 @@
 # mini_twitter
 make mini twitter studing backend
 
+# start backend
+
 ### HTTP Status Code remind
 
 #### 200 OK
@@ -32,4 +34,4 @@ HTTP 요청을 보내는 클라이언트가 해당 요청에 대한 권한이 �
 
 HTTP 요청을 보내려는 URI가 존재하지 않을 때 보내는 status code. 어떤 웹사이트에 잘못된 주소로 접근하려고 했을 때 "해당 페이지를 찾을 수 없습니다."라는 메세지가 이에 해당한다.
 
-
+#
