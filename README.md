@@ -1,7 +1,17 @@
 # mini_twitter
 make mini twitter studing backend
 
-# start backend
+# start backend code
+
+#### run app.py
+```bash
+FLASK_ENV=development FKAS_APP=app.py flask run
+```
+
+#### request to server (app.py)
+```bash
+http -v POST localhost:5000/sign-up name=huhji email=huhji.elha@gmail.com password=1234
+```
 
 ### HTTP Status Code remind
 
