@@ -3,9 +3,22 @@
 
 from flask import Flask, jsonify, request
 from flask.json import JSONEncoder
+from sqlalchemy import create_engine, text
+
+def create_app(test_config = None) :
+    app = Flask(__name__)
+
+    if test_config is None :
+        app.config.from_pyfile("config.py")
+    else :
+        app.config.update(test_config)
+
+    database = create_engine(app.config['DB_URL'], encoding='utf-8', max_overflow=0)
+    app.database = database
+    return app
 
 # app start!
-app = Flask(__name__)
+#app = Flask(__name__)
 app.users = {}
 app.id_count = 1
 app.tweets = []
@@ -33,7 +46,9 @@ id가 잘못 할당될 수 있다. 이러한 문제를 예방하기 위해 한 �
 atomic increment operation을 사용해야 한다.
 '''
 
+
 @app.route("/sign-up", methods=['POST'])
+'''
 def sign_up() :
     new_user = request.json # 요청한 정보를 json으로 변환, new_user = {"id":1, "name":huhji} 상태.
     new_user["id"] = app.id_count
@@ -41,6 +56,45 @@ def sign_up() :
     app.id_count = app.id_count + 1
 
     return jsonify(new_user)
+'''
+
+def sign_up() :
+    new_user = request.json
+    new_user_id = app.database.execute(text("""
+    INSERT INTO users(
+        name,
+        email,
+        profile,
+        hashed_password
+    ) VALUES (
+        :name,
+        :email,
+        :profile,
+        :password
+    )
+    """), new_user).lastrowid
+
+    row = current_app.database.execute(text("""
+    SELECT
+        id,
+        name,
+        email,
+        profile
+    FROM users
+    WHERE id = new_user_id
+    """) , {
+        'user_id' : new_user_id
+    }).fetchone()
+
+    created_user = {
+        'id' : row['id'],
+        'name' : row['name'],
+        'email' : row['email'],
+        'profile' : row['profile']
+    } if row else None
+
+    return jsonify(created_user)
+
 
 # tweet code
 app.tweets = []
