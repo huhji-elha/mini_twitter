@@ -40,23 +40,24 @@ app.json_encoder = CustomJSONEncoder
 def ping() :
     return "pong"
 
-'''
+"""
 이후 atomic 연산 추가 필요해! 이렇게 요청하는 new_user마다 id_count를 부여해버리면 HTTP 요청이 동시 요청될 경우
 id가 잘못 할당될 수 있다. 이러한 문제를 예방하기 위해 한 번에 한 스레드만 값을 증가시킬 수 있도록 하는 
 atomic increment operation을 사용해야 한다.
-'''
+"""
 
 
 @app.route("/sign-up", methods=['POST'])
-'''
+
+"""
 def sign_up() :
     new_user = request.json # 요청한 정보를 json으로 변환, new_user = {"id":1, "name":huhji} 상태.
     new_user["id"] = app.id_count
     app.users[app.id_count] = new_user
     app.id_count = app.id_count + 1
 
-    return jsonify(new_user)
-'''
+    return jsonify(new_user) 
+"""
 
 def sign_up() :
     new_user = request.json
@@ -100,6 +101,8 @@ def sign_up() :
 app.tweets = []
 
 @app.route("/tweet", methods=['POST'])
+
+"""
 def tweet() :
     tweet_get = request.json
     user_id = int(tweet_get['id'])
@@ -117,6 +120,28 @@ def tweet() :
         })
 
     return '', 200
+"""
+
+def tweet() :
+    user_tweet = request.json
+    tweet = user_tweet['tweet']
+
+    if len(tweet) > 300 :
+        return '300자를 초과했습니다.'
+
+    app.database.execute(text( """
+    INSERT INTO tweets (
+    user_id,
+    tweet
+    ) VALUES (
+    :user_id,
+    :tweet
+    )
+    """ ), user_tweet)
+
+    return '', 200
+
+
 
 
 @app.route("/follow", methods=['POST'])
@@ -150,6 +175,8 @@ def unfollow() :
     return jsonify(user)
 
 @app.route("/timeline/<int:user_id>", methods=['POST'])
+
+"""
 def timeline(user_id) :
     if user_id not in app.users :
         return "사용자가 존재하지 않습니다.", 400
@@ -163,3 +190,27 @@ def timeline(user_id) :
         'timeline' : timeline
         })
 
+"""
+
+def timeline(user_id) :
+    rows = app.database.execute(text("""
+    SELECT
+        t.user_id,
+        t.tweet
+    FROM tweets t
+    LEFT JOIN users_follow_list ufl ON ufl.user_id = :user_id
+    WHERE t.user_id = :user_id
+    OR t.user_id = ufl.follow_user_id
+    """), {
+        'user_id' : user_id
+    }).fetchall()
+
+    timeline = [{
+        'user_id' : row['user_id'],
+        'tweet' : row['tweet']
+    } for row in rows]
+
+    return jsonify({
+        'user_id' : user_id,
+        'timeline' : timeline
+    })
