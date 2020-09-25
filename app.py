@@ -5,6 +5,9 @@ from flask import Flask, jsonify, request
 from flask.json import JSONEncoder
 from sqlalchemy import create_engine, text
 
+# access token
+import bcrypt
+
 def create_app(test_config = None) :
     app = Flask(__name__)
 
@@ -61,6 +64,9 @@ def sign_up() :
 
 def sign_up() :
     new_user = request.json
+    new_user['password'] = bcrypt.hashpw(new_user['password'].encode('UTF-8'),
+            bcrypt.gensalt()
+            )
     new_user_id = app.database.execute(text("""
     INSERT INTO users(
         name,
