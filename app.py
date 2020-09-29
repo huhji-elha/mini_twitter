@@ -22,6 +22,7 @@ class CustomJSONEncoder(JSONEncoder) :
 # id가 잘못 할당될 수 있다. 이러한 문제를 예방하기 위해 한 번에 한 스레드만 값을 증가시킬 수 있도록 하는 
 # atomic increment operation을 사용해야 한다.
 
+# add git login authorize
 
 
 def sign_up() :
