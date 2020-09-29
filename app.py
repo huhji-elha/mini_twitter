@@ -8,24 +8,6 @@ from sqlalchemy import create_engine, text
 # access token
 import bcrypt
 
-def create_app(test_config = None) :
-    app = Flask(__name__)
-
-    if test_config is None :
-        app.config.from_pyfile("config.py")
-    else :
-        app.config.update(test_config)
-
-    database = create_engine(app.config['DB_URL'], encoding='utf-8', max_overflow=0)
-    app.database = database
-    return app
-
-# app start!
-#app = Flask(__name__)
-app.users = {}
-app.id_count = 1
-app.tweets = []
-
 # set을 JSON 형태로 변경하기 위한 JSON encoder. 
 # set을 list로 변경함으로써 JSON으로 문제없이 변경될 수 있도록 한다.
 class CustomJSONEncoder(JSONEncoder) :
@@ -35,32 +17,12 @@ class CustomJSONEncoder(JSONEncoder) :
         
         return JSONEncoder.default(self, obj)
 
-# Flask의 default Json Encoder로 지정해준다.
-app.json_encoder = CustomJSONEncoder
+
+# 이후 atomic 연산 추가 필요해! 이렇게 요청하는 new_user마다 id_count를 부여해버리면 HTTP 요청이 동시 요청될 경우
+# id가 잘못 할당될 수 있다. 이러한 문제를 예방하기 위해 한 번에 한 스레드만 값을 증가시킬 수 있도록 하는 
+# atomic increment operation을 사용해야 한다.
 
 
-@app.route("/ping", methods=['GET'])
-def ping() :
-    return "pong"
-
-"""
-이후 atomic 연산 추가 필요해! 이렇게 요청하는 new_user마다 id_count를 부여해버리면 HTTP 요청이 동시 요청될 경우
-id가 잘못 할당될 수 있다. 이러한 문제를 예방하기 위해 한 번에 한 스레드만 값을 증가시킬 수 있도록 하는 
-atomic increment operation을 사용해야 한다.
-"""
-
-
-@app.route("/sign-up", methods=['POST'])
-
-"""
-def sign_up() :
-    new_user = request.json # 요청한 정보를 json으로 변환, new_user = {"id":1, "name":huhji} 상태.
-    new_user["id"] = app.id_count
-    app.users[app.id_count] = new_user
-    app.id_count = app.id_count + 1
-
-    return jsonify(new_user) 
-"""
 
 def sign_up() :
     new_user = request.json
@@ -81,7 +43,8 @@ def sign_up() :
     )
     """), new_user).lastrowid
 
-    row = current_app.database.execute(text("""
+def get_user(user_id) :
+    user = current_app.database.execute(text("""
     SELECT
         id,
         name,
@@ -92,6 +55,58 @@ def sign_up() :
     """) , {
         'user_id' : new_user_id
     }).fetchone()
+    return {
+        'id' : user['id'],
+        'name' : user['name'],
+        'email' : user['email'],
+        'profile' : user['profile']
+    } if user else None
+
+def insert_user(user) :
+    return current_app.database.execute(text("""
+    INSERT INTO users (
+        name,
+        email,
+        profile,
+        hashed_password
+    ) VALUES (
+        :name,
+        :email,
+        :profile,
+        :password
+    )
+    """), user).lastrowid
+
+def insert_tweet(user_tweet) :
+    return current_app.database.execute(text("""
+    INSERT INTO tweets (
+        user_id,
+        tweet
+    )VALUES (
+        :id,
+        :tweet
+    )
+    """), user_tweet()).rowcount
+
+
+def insert_follow(user_follow) :
+    return current_app.database.execute(text("""
+    INSERT INTO users_follow_list (
+        user_id,
+        follow_user_id
+    )VALUES (
+        :id,
+        :follow
+    )
+    """), user_follow).rowcount
+
+def insert_unfollow(user_unfollow) :
+    return current_app.database.execute(text("""
+    DELETE FROM users_follow_list
+    WHERE user_id = :id
+    AND follow_user_id = :unfollow
+    """), user_unfollow).rowcount
+
 
     created_user = {
         'id' : row['id'],
@@ -102,104 +117,8 @@ def sign_up() :
 
     return jsonify(created_user)
 
-
-# tweet code
-app.tweets = []
-
-@app.route("/tweet", methods=['POST'])
-
-"""
-def tweet() :
-    tweet_get = request.json
-    user_id = int(tweet_get['id'])
-    tweet = tweet_get['tweet']
-
-    if user_id not in app.users :
-        return "사용자가 존재하지 않습니다.", 400
-    if len(tweet) > 300 :
-        return "300자를 초과했습니다", 400
-
-    user_id = int(tweet_get['id'])
-    app.tweets.append({
-        'user_id' : user_id,
-        'tweet' : tweet
-        })
-
-    return '', 200
-"""
-
-def tweet() :
-    user_tweet = request.json
-    tweet = user_tweet['tweet']
-
-    if len(tweet) > 300 :
-        return '300자를 초과했습니다.'
-
-    app.database.execute(text( """
-    INSERT INTO tweets (
-    user_id,
-    tweet
-    ) VALUES (
-    :user_id,
-    :tweet
-    )
-    """ ), user_tweet)
-
-    return '', 200
-
-
-
-
-@app.route("/follow", methods=['POST'])
-def follow() :
-    tweet_get = request.json
-    user_id = int(tweet_get['id'])
-    user_id_to_follow = int(tweet_get['follow'])
-
-    if user_id not in app.users or user_id_to_follow not in app.users :
-        return "사용자가 존재하지 않습니다.", 400
-    user = app.users[user_id]
-    # 해당 사용자가 팔로우하는 id를 모아놓기 위해 set을 사용한다.
-    user.setdefault('follow', set()).add(user_id_to_follow)
-
-    return jsonify(user)
-    
-
-@app.route("/unfollow", methods=['POST'])
-def unfollow() :
-    tweet_get = request.json
-    user_id = int(tweet_get['id'])
-    #왜 user_id_to_unfollow를 사용하지 않지? 메모리 절약을 위해?
-    user_id_to_follow = int(tweet_get['unfollow'])
-
-    if user_id not in app.users or user_id_to_follow not in app.users :
-        return "사용자가 존재하지 않습니다.", 400
-
-    user = app.users[user_id]
-    user.setdefault('follow', set()).discard(user_id_to_follow)
-
-    return jsonify(user)
-
-@app.route("/timeline/<int:user_id>", methods=['POST'])
-
-"""
-def timeline(user_id) :
-    if user_id not in app.users :
-        return "사용자가 존재하지 않습니다.", 400
-
-    follow_list = app.users[user_id].get('follow', set())
-    follow_list.add(user_id)
-    timeline = [tweet for tweet in app.tweets if tweet['user_id'] in follow_list]
-
-    return jsonify({
-        'user_id' : user_id,
-        'timeline' : timeline
-        })
-
-"""
-
-def timeline(user_id) :
-    rows = app.database.execute(text("""
+def get_timeline(user_id) :
+    timeline = current_app.database.execute(text("""
     SELECT
         t.user_id,
         t.tweet
@@ -207,16 +126,90 @@ def timeline(user_id) :
     LEFT JOIN users_follow_list ufl ON ufl.user_id = :user_id
     WHERE t.user_id = :user_id
     OR t.user_id = ufl.follow_user_id
-    """), {
+    )""", {
         'user_id' : user_id
     }).fetchall()
 
-    timeline = [{
-        'user_id' : row['user_id'],
-        'tweet' : row['tweet']
-    } for row in rows]
+    return [{
+        'user_id' : tweet['user_id'],
+        'tweet' : tweet['tweet']
+    } for tweet in timeline]
 
-    return jsonify({
-        'user_id' : user_id,
-        'timeline' : timeline
-    })
+
+def create_app(test_config = None) :
+    app = Flask(__name__)
+    
+    # Flask의 default Json Encoder로 지정해준다.
+    app.json_encoder = CustomJSONEncoder
+
+    if test_config is None :
+        app.config.from_pyfile("config.py")
+    else :
+        app.config.update(test_config)
+
+    database = create_engine(app.config['DB_URL'], encoding='utf-8', max_overflow=0)
+    app.database = database
+
+    @app.route("/ping", methods=['GET'])
+    def ping() :
+        return "pong"
+
+    @app.route("/sign-up", methods=['POST'])
+    def sign_up() :
+        new_user = request.json
+        new_user['password'] = bcrypt.hashpw(
+            new_user['password'].encode('UTF-8'),
+            bcrypt.gensalt()
+        )
+        new_user_id = app.database.execute(text("""
+           INSERT INTO users (
+               name,
+               email,
+               profile,
+               hashed_password
+            ) VALUES (
+                :name,
+                :email,
+                :profile,
+                :password
+            )
+        """), new_user).lastrowid
+        #new_user_id = insert_user(new_user)
+        new_user_info = get_user(new_user_id)
+
+        return jsonify(new_user_info)
+    
+    @app.route("/tweet", methods=['POST'])
+    def tweet() :
+        user_tweet = request.json
+        tweet = user_tweet['tweet']
+
+        if len(tweet) > 300 :
+            return "300자를 초과했습니다", 400
+        insert_tweet(user_tweet)
+
+        return '', 200
+
+    @app.route("/follow", methods=['POST'])
+    def follow() :
+        payload = request.json
+        insert_follow(payload)
+
+        return '', 200
+
+    @app.route("/unfollow", methods=['POST'])
+    def unfollow() :
+        payload = request.json
+        insert_unfollow(payload)
+
+        return '', 200
+
+    @app.route("/timeline/<int:user_id>", methods=['GET'])
+    def timeline(user_id) :
+        return jsonify({
+            'user_id' : user_id,
+            'timeline' : get_timeline(user_id)
+        })
+
+    return app
+
